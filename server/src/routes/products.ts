@@ -1,7 +1,20 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { getProductImagesCollection } from '../db/mongo.js';
-import { ProductImageInputSchema } from '../db/models/product-image.js';
 import { enqueueProductImageIndex } from '../queues/indexQueue.js';
+
+const ProductImageInputSchema = z.object({
+  productId: z.string().min(1),
+  title: z.string().optional(),
+  imageUrl: z.string().url(),
+  localPath: z.string().optional(),
+  publicImageUrl: z.string().optional(),
+  productUrl: z.string().url().optional(),
+  attributes: z.record(z.union([z.string(), z.number(), z.boolean()])).default({}),
+  price: z.number().nonnegative().default(0),
+  inStock: z.boolean().default(true),
+  modelVersion: z.string().optional(),
+});
 
 export function createProductsRouter(): Router {
   const router = Router();
