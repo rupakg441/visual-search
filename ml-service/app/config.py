@@ -22,12 +22,12 @@ class Settings(BaseSettings):
     onnx_model_dir: str = "./models/onnx"
 
     max_image_bytes: int = 10 * 1024 * 1024
-    enable_object_detection: bool = True
+    enable_object_detection: bool = False
     yolo_model: str = "yolov8n.pt"
     yolo_conf: float = 0.25
     enable_bg_removal: bool = False
     enable_tta: bool = False
-    enable_zero_shot_attributes: bool = True
+    enable_zero_shot_attributes: bool = False
 
     finetuned_weights_path: str | None = None
 
