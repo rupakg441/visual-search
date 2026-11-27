@@ -9,7 +9,11 @@ dotenv.config();
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(4000),
-  CLIENT_ORIGIN: z.string().default('http://localhost:5173'),
+  CLIENT_ORIGIN: z
+    .string()
+    .trim()
+    .default('http://localhost:5173')
+    .transform((origin) => origin.replace(/\/+$/, '')),
   LOCAL_IMAGE_DIR: z.string().default(path.resolve(process.cwd(), '../data/images')),
 
   MONGODB_URI: z.string().default('mongodb://localhost:27017'),

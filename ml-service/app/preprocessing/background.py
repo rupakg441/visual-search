@@ -9,7 +9,8 @@ logger = logging.getLogger(__name__)
 class BackgroundRemover:
     """Removes background with rembg and composites onto a neutral white canvas."""
 
-    def __init__(self) -> None:
+    def __init__(self, model_name: str = "u2netp") -> None:
+        self.model_name = model_name
         self._session = None
         self._remove_fn = None
 
@@ -17,9 +18,9 @@ class BackgroundRemover:
         try:
             from rembg import new_session, remove
 
-            self._session = new_session("u2net")
+            self._session = new_session(self.model_name)
             self._remove_fn = remove
-            logger.info("Loaded rembg u2net session.")
+            logger.info("Loaded rembg %s session.", self.model_name)
         except Exception as exc:  # pragma: no cover - optional model download
             logger.warning("rembg unavailable (%s); skipping background removal.", exc)
             self._session = None
@@ -34,7 +35,6 @@ class BackgroundRemover:
             rgba = self._remove_fn(image, session=self._session)
             if rgba.mode != "RGBA":
                 rgba = rgba.convert("RGBA")
-            # Check if alpha channel accidentally erased almost everything
             alpha_extrema = rgba.getchannel("A").getextrema()
             if alpha_extrema[1] < 16:
                 return image

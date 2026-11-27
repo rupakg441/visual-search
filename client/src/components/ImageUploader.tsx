@@ -27,8 +27,11 @@ export function ImageUploader({ onSelectFile, sampleItems = [], disabled }: Imag
   };
 
   const loadSample = async (item: CatalogItem) => {
-    const src = resolveImageUrl(item);
-    const res = await fetch(src);
+    const primary = resolveImageUrl(item);
+    let res = await fetch(primary).catch(() => null);
+    if (!res || !res.ok) {
+      res = await fetch(item.imageUrl);
+    }
     const blob = await res.blob();
     onSelectFile(blob, `${item.productId}.webp`);
   };
@@ -123,7 +126,16 @@ export function ImageUploader({ onSelectFile, sampleItems = [], disabled }: Imag
                 onClick={() => void loadSample(item)}
                 title={`Search using ${item.title ?? item.productId}`}
               >
-                <img src={resolveImageUrl(item)} alt={item.title ?? item.productId} loading="lazy" />
+                <img
+                  src={resolveImageUrl(item)}
+                  alt={item.title ?? item.productId}
+                  loading="lazy"
+                  onError={(e) => {
+                    if (e.currentTarget.src !== item.imageUrl) {
+                      e.currentTarget.src = item.imageUrl;
+                    }
+                  }}
+                />
                 <div style={{ marginTop: '0.2rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {item.productId}
                 </div>

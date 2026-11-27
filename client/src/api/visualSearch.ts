@@ -66,6 +66,10 @@ export interface CatalogResponse {
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '';
 
 export function resolveImageUrl(item: { publicImageUrl?: string; imageUrl: string }): string {
+  // Prefer the source URL stored with the catalog record. publicImageUrl may
+  // point at the API's local /images directory, which is not persisted on hosts
+  // such as Render unless a persistent disk is configured.
+  if (/^https?:\/\//i.test(item.imageUrl)) return item.imageUrl;
   if (item.publicImageUrl) {
     return item.publicImageUrl.startsWith('http')
       ? item.publicImageUrl

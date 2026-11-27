@@ -22,10 +22,13 @@ class Settings(BaseSettings):
     onnx_model_dir: str = "./models/onnx"
 
     max_image_bytes: int = 10 * 1024 * 1024
+    max_preprocess_dim: int = 1024
+    embed_micro_batch_size: int = 8
     enable_object_detection: bool = False
     yolo_model: str = "yolov8n.pt"
     yolo_conf: float = 0.25
     enable_bg_removal: bool = False
+    rembg_model: str = "u2netp"
     enable_tta: bool = False
     enable_zero_shot_attributes: bool = False
 

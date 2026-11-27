@@ -18,13 +18,22 @@ dependencies = [
   "torch>=2.3.0",
   "torchvision>=0.18.0",
   "open-clip-torch>=2.26.0",
-  "transformers>=4.44.0",
   "onnxruntime>=1.18.0",
-  "rembg>=2.0.59",
-  "ultralytics>=8.2.0",
 ]
 
 [project.optional-dependencies]
+preprocess = [
+  "rembg>=2.0.59",
+  "ultralytics>=8.2.0",
+]
+dinov2 = [
+  "transformers>=4.44.0",
+]
+full = [
+  "rembg>=2.0.59",
+  "ultralytics>=8.2.0",
+  "transformers>=4.44.0",
+]
 dev = [
   "pytest>=8.3.0",
   "httpx>=0.27.0",

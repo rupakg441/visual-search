@@ -4,6 +4,10 @@ services:
     container_name: visual-search-redis
     ports:
       - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -13,6 +17,7 @@ services:
   mongo:
     image: mongodb/mongodb-atlas-local:latest
     container_name: visual-search-mongo
+    profiles: ["local-atlas"]
     ports:
       - "27017:27017"
     volumes:
@@ -28,17 +33,22 @@ services:
     env_file:
       - .env
     environment:
-      - MODEL_VERSION=${MODEL_VERSION:-openclip-vit-b32-v1}
+      - MODEL_VERSION=${MODEL_VERSION:-mobileclip2-s0-v1}
       - EMBEDDING_BACKEND=${EMBEDDING_BACKEND:-openclip}
-      - OPENCLIP_MODEL=${OPENCLIP_MODEL:-ViT-B-32}
-      - OPENCLIP_PRETRAINED=${OPENCLIP_PRETRAINED:-laion2b_s34b_b79k}
+      - OPENCLIP_MODEL=${OPENCLIP_MODEL:-MobileCLIP2-S0}
+      - OPENCLIP_PRETRAINED=${OPENCLIP_PRETRAINED:-dfndr2b}
       - ENABLE_DINOV2=${ENABLE_DINOV2:-false}
       - ENABLE_OBJECT_DETECTION=${ENABLE_OBJECT_DETECTION:-false}
       - ENABLE_BG_REMOVAL=${ENABLE_BG_REMOVAL:-false}
       - ENABLE_ZERO_SHOT_ATTRIBUTES=${ENABLE_ZERO_SHOT_ATTRIBUTES:-false}
       - ENABLE_TTA=${ENABLE_TTA:-false}
       - ENABLE_ONNX=${ENABLE_ONNX:-false}
-      - DEVICE=${DEVICE:-auto}
+      - DEVICE=${DEVICE:-cpu}
+      - TORCH_NUM_THREADS=${TORCH_NUM_THREADS:-2}
+    deploy:
+      resources:
+        limits:
+          memory: 768M
     volumes:
       - ml_cache:/root/.cache
       - ./data:/app/data
@@ -60,14 +70,17 @@ services:
       - .env
     environment:
       - PORT=4000
+      - NODE_OPTIONS=--max-old-space-size=256
       - ML_SERVICE_URL=http://ml-service:8000
       - REDIS_URL=redis://redis:6379
       - LOCAL_IMAGE_DIR=/app/data/images
+    deploy:
+      resources:
+        limits:
+          memory: 384M
     volumes:
       - ./data:/app/data
     depends_on:
-      mongo:
-        condition: service_started
       redis:
         condition: service_healthy
       ml-service:
@@ -82,15 +95,18 @@ services:
     env_file:
       - .env
     environment:
+      - NODE_OPTIONS=--max-old-space-size=256
       - ML_SERVICE_URL=http://ml-service:8000
       - REDIS_URL=redis://redis:6379
       - QUEUE_ENABLED=true
       - LOCAL_IMAGE_DIR=/app/data/images
+    deploy:
+      resources:
+        limits:
+          memory: 384M
     volumes:
       - ./data:/app/data
     depends_on:
-      mongo:
-        condition: service_started
       redis:
         condition: service_healthy
       ml-service:
@@ -105,6 +121,10 @@ services:
     container_name: visual-search-client
     ports:
       - "5173:80"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     depends_on:
       - server
 

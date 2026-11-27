@@ -4,7 +4,24 @@ import { Queue } from 'bullmq';
 import dotenv from 'dotenv';
 import { Redis } from 'ioredis';
 import { MongoClient } from 'mongodb';
-import type { ScrapedCatalogItem } from './scrape.js';
+
+interface ScrapedCatalogItem {
+  productId: string;
+  title: string;
+  imageUrl: string;
+  localPath: string;
+  publicImageUrl: string;
+  productUrl: string;
+  attributes: {
+    category: string;
+    shape?: string;
+    metal?: string;
+    color?: string;
+    carat?: string;
+  };
+  price: number;
+  inStock: boolean;
+}
 
 dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
 
@@ -181,7 +198,15 @@ async function main(): Promise<void> {
     const col = client.db(dbName).collection(colName);
     await col.createIndex(
       { productId: 1, imageUrl: 1, modelVersion: 1 },
-      { unique: true, name: 'uniq_product_image_model' },
+      {
+        unique: true,
+        name: 'uniq_product_image_model_valid',
+        partialFilterExpression: {
+          productId: { $type: 'string', $gt: '' },
+          imageUrl: { $type: 'string', $gt: '' },
+          modelVersion: { $type: 'string', $gt: '' },
+        },
+      },
     );
 
     const startedAt = Date.now();

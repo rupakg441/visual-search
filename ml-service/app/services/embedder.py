@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import gc
 import numpy as np
 from PIL import Image
 
@@ -53,7 +54,7 @@ class EmbeddingPipeline:
         if detector:
             detector.load()
 
-        bg_remover = BackgroundRemover() if settings.enable_bg_removal else None
+        bg_remover = BackgroundRemover(settings.rembg_model) if settings.enable_bg_removal else None
         if bg_remover:
             bg_remover.load()
 
@@ -82,8 +83,10 @@ class EmbeddingPipeline:
             )
             clip_enc.load()
             primary = clip_enc
-            if settings.enable_zero_shot_attributes:
+            if settings.enable_zero_shot_attributes and clip_enc.model is not None:
                 attribute_scorer = ZeroShotAttributeScorer(clip_enc)
+            # Prune text transformer weights once static prototypes (if enabled) are computed
+            clip_enc.release_unused_components(keep_text=False)
 
         dinov2: DINOv2Encoder | None = None
         if settings.enable_dinov2 and settings.embedding_backend != "dinov2":
@@ -111,6 +114,9 @@ class EmbeddingPipeline:
             content_type=content_type,
             max_bytes=self.settings.max_image_bytes,
         )
+        max_dim = self.settings.max_preprocess_dim
+        if max_dim > 0 and max(img.size) > max_dim:
+            img.thumbnail((max_dim, max_dim), Image.Resampling.BICUBIC)
         if self.detector and not skip_detection:
             img = self.detector.crop_main_object(img)
         if self.bg_remover and not skip_bg_removal:
@@ -142,39 +148,48 @@ class EmbeddingPipeline:
         skip_detection: bool = False,
     ) -> list[EmbeddingResult]:
         tta_flag = self.settings.enable_tta if use_tta is None else use_tta
-        processed = [
-            self.preprocess_image(
-                raw,
-                ctype,
-                skip_bg_removal=skip_bg_removal,
-                skip_detection=skip_detection,
-            )
-            for raw, ctype in items
-        ]
-
-        primary_embs = self._encode_with_tta(self.primary_encoder, processed, tta_flag)
-        secondary_embs = (
-            self._encode_with_tta(self.dinov2_encoder, processed, tta_flag)
-            if self.dinov2_encoder is not None
-            else None
-        )
-
+        chunk_size = max(1, self.settings.embed_micro_batch_size)
         results: list[EmbeddingResult] = []
-        for idx in range(len(processed)):
-            prim = primary_embs[idx]
-            sec = secondary_embs[idx] if secondary_embs is not None else None
-            attrs = (
-                self.attribute_scorer.predict(prim)
-                if self.attribute_scorer is not None
+
+        for start in range(0, len(items), chunk_size):
+            chunk = items[start : start + chunk_size]
+            processed = [
+                self.preprocess_image(
+                    raw,
+                    ctype,
+                    skip_bg_removal=skip_bg_removal,
+                    skip_detection=skip_detection,
+                )
+                for raw, ctype in chunk
+            ]
+
+            primary_embs = self._encode_with_tta(self.primary_encoder, processed, tta_flag)
+            secondary_embs = (
+                self._encode_with_tta(self.dinov2_encoder, processed, tta_flag)
+                if self.dinov2_encoder is not None
                 else None
             )
-            results.append(
-                EmbeddingResult(
-                    embedding=prim.tolist(),
-                    dims=int(prim.shape[0]),
-                    secondary_embedding=sec.tolist() if sec is not None else None,
-                    secondary_dims=int(sec.shape[0]) if sec is not None else None,
-                    predicted_attributes=attrs,
+
+            for idx in range(len(processed)):
+                prim = primary_embs[idx]
+                sec = secondary_embs[idx] if secondary_embs is not None else None
+                attrs = (
+                    self.attribute_scorer.predict(prim)
+                    if self.attribute_scorer is not None
+                    else None
                 )
-            )
+                results.append(
+                    EmbeddingResult(
+                        embedding=prim.tolist(),
+                        dims=int(prim.shape[0]),
+                        secondary_embedding=sec.tolist() if sec is not None else None,
+                        secondary_dims=int(sec.shape[0]) if sec is not None else None,
+                        predicted_attributes=attrs,
+                    )
+                )
+
+            del processed, primary_embs, secondary_embs
+
+        if len(items) > chunk_size:
+            gc.collect()
         return results

@@ -17,7 +17,7 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   }
   const denom = Math.sqrt(normA) * Math.sqrt(normB);
   if (denom < 1e-12) return 0;
-  // Clamp to [-1, 1] and map cosine similarity to [0, 1] friendly range if needed;
+  // Clamp to [-1, 1] and map cosine similarity to [0, 1] friendly range;
   // Atlas cosine similarity returns (1 + cosine) / 2 in [0, 1].
   const rawCos = Math.max(-1, Math.min(1, dot / denom));
   return (1 + rawCos) / 2;
@@ -50,6 +50,87 @@ export interface SearchCandidatesOptions {
   limit?: number;
 }
 
+async function runExactStreamingSearch(
+  collection: Collection<ProductImageDoc>,
+  queryEmbedding: number[],
+  mongoFilter: Document,
+  limit: number,
+): Promise<ImageCandidate[]> {
+  const top: ImageCandidate[] = [];
+  const cursor = collection.find(mongoFilter, {
+    projection: {
+      productId: 1,
+      title: 1,
+      imageUrl: 1,
+      localPath: 1,
+      publicImageUrl: 1,
+      productUrl: 1,
+      attributes: 1,
+      price: 1,
+      inStock: 1,
+      modelVersion: 1,
+      embedding: 1,
+      secondaryEmbedding: 1,
+    },
+    batchSize: 200,
+  });
+
+  const processDoc = (doc: Partial<ProductImageDoc>) => {
+    if (!Array.isArray(doc.embedding) || doc.embedding.length === 0) return;
+    const score = cosineSimilarity(queryEmbedding, doc.embedding);
+
+    if (top.length >= limit && score <= top[top.length - 1].vectorScore) {
+      return;
+    }
+
+    const cand: ImageCandidate = {
+      productId: doc.productId ?? '',
+      title: doc.title,
+      imageUrl: doc.imageUrl ?? '',
+      localPath: doc.localPath,
+      publicImageUrl: doc.publicImageUrl,
+      productUrl: doc.productUrl,
+      attributes: doc.attributes ?? {},
+      price: doc.price ?? 0,
+      inStock: doc.inStock ?? true,
+      modelVersion: doc.modelVersion ?? '',
+      vectorScore: score,
+      secondaryEmbedding: doc.secondaryEmbedding,
+    };
+
+    // Keep bounded sorted list in descending order of vectorScore (O(limit) RAM)
+    let insertAt = top.length;
+    for (let i = 0; i < top.length; i += 1) {
+      if (cand.vectorScore > top[i].vectorScore) {
+        insertAt = i;
+        break;
+      }
+    }
+    top.splice(insertAt, 0, cand);
+    if (top.length > limit) {
+      top.pop();
+    }
+  };
+
+  type CursorLike =
+    | AsyncIterable<Partial<ProductImageDoc>>
+    | { toArray: () => Promise<Partial<ProductImageDoc>[]> };
+  const cursorLike = cursor as unknown as CursorLike;
+
+  if (Symbol.asyncIterator in cursorLike) {
+    for await (const doc of cursorLike) {
+      processDoc(doc);
+    }
+  } else {
+    const docs = await cursorLike.toArray();
+    for (const doc of docs) {
+      processDoc(doc);
+    }
+  }
+
+  return top;
+}
+
 export async function searchImageCandidates({
   collection,
   queryEmbedding,
@@ -62,45 +143,8 @@ export async function searchImageCandidates({
   const useExact = exact || env.VECTOR_SEARCH_MODE === 'exact';
 
   if (useExact) {
-    const docs = await collection
-      .find(mongoFilter, {
-        projection: {
-          productId: 1,
-          title: 1,
-          imageUrl: 1,
-          localPath: 1,
-          publicImageUrl: 1,
-          productUrl: 1,
-          attributes: 1,
-          price: 1,
-          inStock: 1,
-          modelVersion: 1,
-          embedding: 1,
-          secondaryEmbedding: 1,
-        },
-      })
-      .toArray();
-
-    const scored: ImageCandidate[] = docs
-      .filter((doc) => Array.isArray(doc.embedding) && doc.embedding.length > 0)
-      .map((doc) => ({
-        productId: doc.productId,
-        title: doc.title,
-        imageUrl: doc.imageUrl,
-        localPath: doc.localPath,
-        publicImageUrl: doc.publicImageUrl,
-        productUrl: doc.productUrl,
-        attributes: doc.attributes ?? {},
-        price: doc.price ?? 0,
-        inStock: doc.inStock ?? true,
-        modelVersion: doc.modelVersion,
-        vectorScore: cosineSimilarity(queryEmbedding, doc.embedding),
-        secondaryEmbedding: doc.secondaryEmbedding,
-      }))
-      .sort((a, b) => b.vectorScore - a.vectorScore)
-      .slice(0, limit);
-
-    return { candidates: scored, mode: 'exact' };
+    const candidates = await runExactStreamingSearch(collection, queryEmbedding, mongoFilter, limit);
+    return { candidates, mode: 'exact' };
   }
 
   const vectorSearchStage: Document = {
@@ -135,11 +179,25 @@ export async function searchImageCandidates({
     },
   ];
 
-  const candidates = (await collection.aggregate<ImageCandidate>(pipeline).toArray()).map((c) => ({
-    ...c,
-    attributes: c.attributes ?? {},
-  }));
-  return { candidates, mode: 'atlas' };
+  try {
+    const candidates = (await collection.aggregate<ImageCandidate>(pipeline).toArray()).map((c) => ({
+      ...c,
+      attributes: c.attributes ?? {},
+    }));
+    if (candidates.length > 0) {
+      return { candidates, mode: 'atlas' };
+    }
+    // If Atlas index is still building/empty, fall back to exact streaming search automatically
+    const fallback = await runExactStreamingSearch(collection, queryEmbedding, mongoFilter, limit);
+    return { candidates: fallback, mode: fallback.length > 0 ? 'exact' : 'atlas' };
+  } catch (err) {
+    console.warn(
+      '[vectorSearch] $vectorSearch unavailable or failed, falling back to exact search:',
+      (err as Error).message,
+    );
+    const candidates = await runExactStreamingSearch(collection, queryEmbedding, mongoFilter, limit);
+    return { candidates, mode: 'exact' };
+  }
 }
 
 export interface GroupedProduct {

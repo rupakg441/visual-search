@@ -15,7 +15,7 @@ export const DEFAULT_FILTERS: SearchFiltersState = {
   color: '',
   minPrice: '',
   maxPrice: '',
-  inStock: true,
+  inStock: false,
   exact: false,
   hybridRanking: true,
   rerank: true,

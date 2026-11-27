@@ -34,7 +34,16 @@ export function ResultsGrid({ results, loading, onCardClick }: ResultsGridProps)
         return (
           <article key={`${item.productId}-${item.imageUrl}`} className="card">
             <div className="card-media">
-              <img src={imgSrc} alt={item.title ?? item.productId} loading="lazy" />
+              <img
+                src={imgSrc}
+                alt={item.title ?? item.productId}
+                loading="lazy"
+                onError={(e) => {
+                  if (e.currentTarget.src !== item.imageUrl) {
+                    e.currentTarget.src = item.imageUrl;
+                  }
+                }}
+              />
               <span className="similarity-badge">{pct}% match</span>
             </div>
 
