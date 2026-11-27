@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     enable_object_detection: bool = True
     yolo_model: str = "yolov8n.pt"
     yolo_conf: float = 0.25
-    enable_bg_removal: bool = True
+    enable_bg_removal: bool = False
     enable_tta: bool = False
     enable_zero_shot_attributes: bool = True
 
