@@ -1,0 +1,7 @@
+pyproject.toml
+app/config.py
+visual_search_ml.egg-info/PKG-INFO
+visual_search_ml.egg-info/SOURCES.txt
+visual_search_ml.egg-info/dependency_links.txt
+visual_search_ml.egg-info/requires.txt
+visual_search_ml.egg-info/top_level.txt

@@ -1,0 +1,46 @@
+{
+  "name": "product_images_vector_index",
+  "type": "vectorSearch",
+  "definition": {
+    "fields": [
+      {
+        "type": "vector",
+        "path": "embedding",
+        "numDimensions": 512,
+        "similarity": "cosine"
+      },
+      {
+        "type": "filter",
+        "path": "inStock"
+      },
+      {
+        "type": "filter",
+        "path": "modelVersion"
+      },
+      {
+        "type": "filter",
+        "path": "price"
+      },
+      {
+        "type": "filter",
+        "path": "attributes.category"
+      },
+      {
+        "type": "filter",
+        "path": "attributes.shape"
+      },
+      {
+        "type": "filter",
+        "path": "attributes.color"
+      },
+      {
+        "type": "filter",
+        "path": "attributes.metal"
+      },
+      {
+        "type": "filter",
+        "path": "attributes.carat"
+      }
+    ]
+  }
+}

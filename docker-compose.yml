@@ -1,0 +1,112 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: visual-search-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  mongo:
+    image: mongodb/mongodb-atlas-local:latest
+    container_name: visual-search-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    container_name: visual-search-ml
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - MODEL_VERSION=${MODEL_VERSION:-openclip-vit-b32-v1}
+      - EMBEDDING_BACKEND=${EMBEDDING_BACKEND:-openclip}
+      - OPENCLIP_MODEL=${OPENCLIP_MODEL:-ViT-B-32}
+      - OPENCLIP_PRETRAINED=${OPENCLIP_PRETRAINED:-laion2b_s34b_b79k}
+      - ENABLE_DINOV2=${ENABLE_DINOV2:-false}
+      - ENABLE_OBJECT_DETECTION=${ENABLE_OBJECT_DETECTION:-true}
+      - ENABLE_BG_REMOVAL=${ENABLE_BG_REMOVAL:-true}
+      - ENABLE_TTA=${ENABLE_TTA:-false}
+      - ENABLE_ONNX=${ENABLE_ONNX:-false}
+      - DEVICE=${DEVICE:-auto}
+    volumes:
+      - ml_cache:/root/.cache
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: visual-search-server
+    ports:
+      - "${PORT:-4000}:4000"
+    env_file:
+      - .env
+    environment:
+      - PORT=4000
+      - ML_SERVICE_URL=http://ml-service:8000
+      - REDIS_URL=redis://redis:6379
+      - LOCAL_IMAGE_DIR=/app/data/images
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      mongo:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      ml-service:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: visual-search-worker
+    command: ["node", "dist/queues/indexWorker.js"]
+    env_file:
+      - .env
+    environment:
+      - ML_SERVICE_URL=http://ml-service:8000
+      - REDIS_URL=redis://redis:6379
+      - QUEUE_ENABLED=true
+      - LOCAL_IMAGE_DIR=/app/data/images
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      mongo:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      ml-service:
+        condition: service_healthy
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:4000}
+    container_name: visual-search-client
+    ports:
+      - "5173:80"
+    depends_on:
+      - server
+
+volumes:
+  mongo_data:
+  ml_cache:
