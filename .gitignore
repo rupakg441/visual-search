@@ -11,5 +11,5 @@ node_modules/
 **/.pytest_cache/
 **/.venv/
 data/
-models/
+/models/
 *.log
