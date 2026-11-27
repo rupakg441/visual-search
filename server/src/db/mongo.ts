@@ -20,7 +20,17 @@ export async function ensureIndexes(db: Db): Promise<void> {
   const productImages = db.collection<ProductImageDoc>(env.MONGODB_COLLECTION);
   await productImages.createIndex(
     { productId: 1, imageUrl: 1, modelVersion: 1 },
-    { unique: true, name: 'uniq_product_image_model' },
+    {
+      unique: true,
+      name: 'uniq_product_image_model_valid',
+      // Older/imported documents may lack these fields. Keep them in the
+      // collection, but enforce idempotent indexing for valid image records.
+      partialFilterExpression: {
+        productId: { $type: 'string', $gt: '' },
+        imageUrl: { $type: 'string', $gt: '' },
+        modelVersion: { $type: 'string', $gt: '' },
+      },
+    },
   );
   await productImages.createIndex(
     { 'attributes.category': 1, 'attributes.shape': 1, 'attributes.color': 1, inStock: 1, price: 1 },
