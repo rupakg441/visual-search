@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { env } from '../config/env.js';
 import { getProductImagesCollection } from '../db/mongo.js';
+import { HttpError } from '../middleware/errorHandler.js';
 import { enqueueProductImageIndex } from '../queues/indexQueue.js';
 
 const ProductImageInputSchema = z.object({
@@ -18,6 +20,68 @@ const ProductImageInputSchema = z.object({
 
 export function createProductsRouter(): Router {
   const router = Router();
+
+  router.get('/catalog-image', async (req, res, next) => {
+    try {
+      const rawUrl = typeof req.query.url === 'string' ? req.query.url : '';
+      let imageUrl: URL;
+      try {
+        imageUrl = new URL(rawUrl);
+      } catch {
+        throw new HttpError('A valid catalog image URL is required.', 400);
+      }
+
+      if (
+        imageUrl.protocol !== 'https:' ||
+        imageUrl.hostname !== 'cdn.diamondforest.com' ||
+        imageUrl.port !== '' ||
+        !imageUrl.pathname.startsWith('/Products/')
+      ) {
+        throw new HttpError('Only Diamond Forest catalog image URLs are allowed.', 400);
+      }
+
+      const upstream = await fetch(imageUrl, {
+        signal: AbortSignal.timeout(20_000),
+        redirect: 'error',
+      });
+      if (!upstream.ok) {
+        throw new HttpError(`Catalog image request failed (${upstream.status}).`, 502);
+      }
+
+      const contentType = upstream.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
+      if (!contentType?.startsWith('image/')) {
+        throw new HttpError('The catalog URL did not return an image.', 502);
+      }
+
+      const declaredLength = Number(upstream.headers.get('content-length') ?? 0);
+      if (declaredLength > env.MAX_IMAGE_BYTES) {
+        throw new HttpError('Catalog image exceeds the upload size limit.', 413);
+      }
+
+      const reader = upstream.body?.getReader();
+      if (!reader) throw new HttpError('Catalog image response had no body.', 502);
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > env.MAX_IMAGE_BYTES) {
+          await reader.cancel();
+          throw new HttpError('Catalog image exceeds the upload size limit.', 413);
+        }
+        chunks.push(value);
+      }
+
+      res
+        .status(200)
+        .set('Content-Type', contentType)
+        .set('Cache-Control', 'public, max-age=3600')
+        .send(Buffer.concat(chunks));
+    } catch (err) {
+      next(err);
+    }
+  });
 
   router.get('/products', async (req, res, next) => {
     try {

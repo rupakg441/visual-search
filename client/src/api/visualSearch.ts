@@ -78,6 +78,13 @@ export function resolveImageUrl(item: { publicImageUrl?: string; imageUrl: strin
   return item.imageUrl;
 }
 
+export async function fetchCatalogImage(imageUrl: string): Promise<Blob> {
+  const proxyUrl = `${API_BASE}/api/catalog-image?url=${encodeURIComponent(imageUrl)}`;
+  const res = await fetch(proxyUrl);
+  if (!res.ok) throw new Error(`Failed to load sample image (${res.status}).`);
+  return res.blob();
+}
+
 export async function runVisualSearch(
   imageBlob: Blob,
   filename: string,

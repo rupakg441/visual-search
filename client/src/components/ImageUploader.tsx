@@ -1,6 +1,6 @@
 import { Camera, ImagePlus, Upload } from 'lucide-react';
 import { useRef, useState, type DragEvent } from 'react';
-import { resolveImageUrl, type CatalogItem } from '../api/visualSearch';
+import { fetchCatalogImage, resolveImageUrl, type CatalogItem } from '../api/visualSearch';
 
 interface ImageUploaderProps {
   onSelectFile: (blob: Blob, filename: string) => void;
@@ -27,12 +27,7 @@ export function ImageUploader({ onSelectFile, sampleItems = [], disabled }: Imag
   };
 
   const loadSample = async (item: CatalogItem) => {
-    const primary = resolveImageUrl(item);
-    let res = await fetch(primary).catch(() => null);
-    if (!res || !res.ok) {
-      res = await fetch(item.imageUrl);
-    }
-    const blob = await res.blob();
+    const blob = await fetchCatalogImage(item.imageUrl);
     onSelectFile(blob, `${item.productId}.webp`);
   };
 
