@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getProductImagesCollection } from '../db/mongo.js';
-import { ProductImageInputSchema } from '../db/models/productImage.js';
+import { ProductImageInputSchema } from '../db/models/product-image.js';
 import { enqueueProductImageIndex } from '../queues/indexQueue.js';
 
 export function createProductsRouter(): Router {
